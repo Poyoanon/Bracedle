@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",
-    "@tailwindcss/postcss": "^4.1.14",
     "nuxt": "^4.1.2",
     "tailwindcss": "^3.4.18",
+    "tesseract.js": "^6.0.1",
     "vue": "^3.5.22",
     "vue-router": "^4.5.1"
   },

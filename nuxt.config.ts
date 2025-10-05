@@ -3,8 +3,17 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['@nuxtjs/tailwindcss'],
   ssr: false,
-  nitro: { preset: 'github_pages' },
+  
+  css: ['~/assets/css/main.css'],
+  
+  nitro: {
+    preset: 'github_pages',
+    output: { publicDir: 'docs' }
+  },
+ 
   app: {
+    baseURL: '/Bracedle/',
+    buildAssetsDir: '_nuxt/', 
     head: {
       title: 'Bracedle',
       meta: [
@@ -13,4 +22,15 @@ export default defineNuxtConfig({
       ]
     }
   },
+
+  vite: {
+    optimizeDeps: {
+      include: ['tesseract.js']
+    },
+    build: {
+      rollupOptions: {
+        external: []
+      }
+    }
+  }
 })

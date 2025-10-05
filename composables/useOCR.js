@@ -1,8 +1,8 @@
-import Tesseract from 'tesseract.js';
-
 export const useOCR = () => {
   const processImage = async (imageFile) => {
     try {
+      const { default: Tesseract } = await import('tesseract.js');
+      
       const { data: { text } } = await Tesseract.recognize(
         imageFile,
         'eng',

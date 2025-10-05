@@ -1,10 +1,7 @@
 <template>
-  <!-- Deep, near-black background with faint saturated glows -->
   <div class="relative min-h-screen">
-    <!-- Base: pure black -->
     <div class="absolute inset-0 bg-black"></div>
 
-    <!-- Soft color wash (very low opacity, saturated but dark) -->
     <div
       class="pointer-events-none absolute inset-0
              [background:
