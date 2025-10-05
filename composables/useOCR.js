@@ -20,6 +20,7 @@ export const useOCR = () => {
       const unknowns = healed.filter(s => s.category === 'unknown');
       const strict = healed.map(s => {
         const check = validateCanonical(s.raw);
+        // attach display-only beautified text (does NOT affect validation)
         const display = beautifyDisplay(s.raw);
         return {
           ...s,
@@ -62,12 +63,12 @@ export const useOCR = () => {
       .replace(/\+\s+(\d+)/g, '+$1')                 // "+ 13121" → "+13121"
       .replace(/\+(\d+)\s+(\d{1,2})%/g, '+$1.$2%')   // "+8 40%" → "+8.40%"
       .replace(/([A-Za-z])([+\-]\d)/g, '$1 $2')      // "Crit+79" → "Crit +79"
-      .replace(/(\d),(\d{3})(?=[^\d]|$)/g, '$1$2');  // 7,200 → 7200 
+      .replace(/(\d),(\d{3})(?=[^\d]|$)/g, '$1$2');  // 7,200 → 7200 (we’ll reformat where needed)
 
     const rawLines = norm.split('\n').map(l => l.trim()).filter(Boolean);
 
     const leadingJunk = `['"\`‘’“”\\s]*`;
-    // bullets: @ © ® o O 8 a A 
+    // bullets: @ © ® o O 8 a A
     const bulletCore = `(?:[@©®oOaA]|8(?=\\s+[A-Za-z]))`;
     const bulletRE = new RegExp(`^${leadingJunk}${bulletCore}(?![A-Za-z0-9])\\s?`);
     const stripLeadingJunkAndBulletRE = new RegExp(`^${leadingJunk}${bulletCore}(?![A-Za-z0-9])\\s?`);
@@ -134,7 +135,7 @@ export const useOCR = () => {
           const stripped = line.replace(stripLeadingJunkAndBulletRE, '').trim();
           current = fixLineContent(stripped);
         }
-        continue; 
+        continue; // ignore preamble before first bullet
       }
 
       if (isBullet) {
@@ -149,7 +150,7 @@ export const useOCR = () => {
     }
     if (current) groups.push(current.trim());
 
-    // loose category
+    // loose category (UI color)
     const isCombatStat = (s) =>
       /^(?:Crit(?!\s*(Rate|Damage|Hit))|Specialization|Swiftness)\s*\+\d+(?:\.\d+)?\b/i.test(s);
     const isBasic      = (s) => /^(Intelligence|Strength|Dexterity)\s*\+\d+/i.test(s);
@@ -260,7 +261,7 @@ export const useOCR = () => {
     });
   };
 
-  // ------------------ DISPLAY BEAUTIFIER (case/phrasing only) ------------------
+  // ------------------ DISPLAY BEAUTIFIER ------------------
   const beautifyDisplay = (input) => {
     let s = input;
 
@@ -434,8 +435,7 @@ export const useOCR = () => {
       'Use 100% zoom or higher; avoid scaled or blurred screenshots.',
       'Avoid overlapping cursors on the bracelet panel.',
       'Upload a PNG if possible.',
-      'Ensure the blue bullet icon is visible for every line.',
-      'Do not use Forced 21:9 in non-ultrawide setups as the screenshot will be too unclear for the OCR.'
+      'Ensure the blue bullet icon is visible for every line.'
     ].map(t => `- ${t}`).join('\n');
 
     return [

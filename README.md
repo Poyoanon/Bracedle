@@ -1,75 +1,23 @@
-# Nuxt Minimal Starter
+# Bracedle — Lost Ark Bracelet Comparator
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Upload two bracelet screenshots and get a straight answer: **left or right is better** — based on role-aware (DPS/Support) weighting.
 
-## Setup
+---
 
-Make sure to install dependencies:
+## 🖼️ How to Use
 
-```bash
-# npm
-npm install
+1. Paste or upload **two** bracelet screenshots.
+2. Pick **Role** (DPS / Support).
+3. Review parsed lines (unknown or mismatches are flagged).
+4. The app will **highlight the better bracelet** (left/right) and sort lines by contribution.
 
-# pnpm
-pnpm install
+**For best OCR results:**
 
-# yarn
-yarn install
+* Crop tightly around the bracelet text (no background/UI).
+* Use **100% zoom** or higher; avoid scaled/blurred screenshots.
+* Avoid overlapping cursors on the bracelet panel.
+* Upload a **PNG** if possible.
+* Ensure the **blue bullet icon** is visible for *every* line.
+* Avoid **Forced 21:9** in non-ultrawide setups.
 
-# bun
-bun install
-```
-
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
-```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
-```
-
-## Production
-
-Build the application for production:
-
-```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+---
