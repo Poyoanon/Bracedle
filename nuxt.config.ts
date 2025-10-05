@@ -3,7 +3,7 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['@nuxtjs/tailwindcss'],
   ssr: false,
-  nitro: { preset: 'static' },
+  nitro: { preset: 'github_pages' },
   app: {
     head: {
       title: 'Bracedle',
