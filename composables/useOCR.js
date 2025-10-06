@@ -1,17 +1,14 @@
-// composables/useOCR.js
 export const useOCR = () => {
   const processImage = async (imageFile) => {
     try {
       const { default: Tesseract } = await import('tesseract.js');
-
       const { data: { text } } = await Tesseract.recognize(
         imageFile,
         'eng',
         {
           logger: m => console.log(m),
           tessedit_pageseg_mode: 6,
-          tessedit_char_whitelist:
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789%+.,/'-(): "
+          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789%+.,/'-(): "
         }
       );
 
@@ -63,18 +60,19 @@ export const useOCR = () => {
       .replace(/\+\s+(\d+)/g, '+$1')                 // "+ 13121" → "+13121"
       .replace(/\+(\d+)\s+(\d{1,2})%/g, '+$1.$2%')   // "+8 40%" → "+8.40%"
       .replace(/([A-Za-z])([+\-]\d)/g, '$1 $2')      // "Crit+79" → "Crit +79"
-      .replace(/(\d),(\d{3})(?=[^\d]|$)/g, '$1$2');  // 7,200 → 7200 (we’ll reformat later)
+      .replace(/(\d),(\d{3})(?=[^\d]|$)/g, '$1$2');  // 7,200 → 7200 (we’ll reformat where needed)
 
     const rawLines = norm.split('\n').map(l => l.trim()).filter(Boolean);
 
     const leadingJunk = `['"\`‘’“”\\s]*`;
-    // bullets: @ © ® o O a A and digit bullets 8/9 (OCR look-alikes)
-    const bulletCore = `(?:[@©®oOaA]|[89](?=\\s+[A-Za-z]))`;
+    // bullets: @ © ® o O 8 9 a A
+    const bulletCore = `(?:[@©®oOaA]|8(?=\\s+[A-Za-z])|9(?=\\s+[A-Za-z]))`;
     const bulletRE = new RegExp(`^${leadingJunk}${bulletCore}(?![A-Za-z0-9])\\s?`);
     const stripLeadingJunkAndBulletRE = new RegExp(`^${leadingJunk}${bulletCore}(?![A-Za-z0-9])\\s?`);
     const stripLeadingJunkOnlyRE = /^[\s"'`‘’“”]+/;
 
-    const headerNoiseRE = /(Item Tier|tem Tier|Restricted Trading|Bound to Character|Untradable|Ancient|Radiant|Bracelet Bonus)/i;
+    // Noise to skip entirely (even if it shows up between bullet lines)
+    const headerNoiseRE = /(Item Tier|tem Tier|Restricted Trading|Bound to Character|Untradable|Ancient|Radiant|Bracelet Bonus|Bonus can(?:not)? be granted\.?|Ark Passive(?: Points)?(?: Effect)?|^Leap \+\d+$)/i;
 
     const fixShieldParen = (s) => {
       return s.replace(/\(Shield[^)]*\)/gi, (m) => {
@@ -90,8 +88,8 @@ export const useOCR = () => {
 
       // insert missing '+'
       t = t.replace(
-        /^(Crit(?!\s*(Rate|Damage|Hit))|Specialization|Swiftness|Domination|Endurance|Expertise)\s+(\d{2,3})\b/i,
-        (_, name, _ign, num) => `${name} +${num}`
+        /^(Crit(?!\s*(?:Rate|Damage|Hit))|Specialization|Swiftness|Domination|Endurance|Expertise)\s+(\d{2,3})\b/i,
+        (_, name, num) => `${name} +${num}`
       );
       t = t.replace(/^(Intelligence|Strength|Dexterity|Vitality)\s+(\d{3,6})\b/i,
         (_, name, num) => `${name} +${num}`
@@ -119,14 +117,15 @@ export const useOCR = () => {
       return t;
     };
 
-    let groups = [];
+    const groups = [];
     let current = '';
     let started = false;
 
     for (let i = 0; i < rawLines.length; i++) {
       let line = rawLines[i];
 
-      if (!started && headerNoiseRE.test(line)) continue;
+      // Skip obvious header / UI lines
+      if (headerNoiseRE.test(line)) continue;
 
       const isBullet = bulletRE.test(line);
       if (!started) {
@@ -143,39 +142,24 @@ export const useOCR = () => {
         const stripped = line.replace(stripLeadingJunkAndBulletRE, '').trim();
         current = fixLineContent(stripped);
       } else {
-        line = line.replace(stripLeadingJunkOnlyRE, '');
+        // skip noisy tails that sometimes appear after a valid bullet line
         if (headerNoiseRE.test(line)) continue;
+        line = line.replace(stripLeadingJunkOnlyRE, '');
         current += (current ? ' ' : '') + fixLineContent(line);
       }
     }
     if (current) groups.push(current.trim());
 
-    // split if a stray bullet sneaks *inside* a grouped line (e.g. "... % 9 Crit +114")
-    const INNER_BULLET_SPLIT = /(?:[@©®oOaA]|[89])\s+(?=(Intelligence|Strength|Dexterity|Vitality|Crit(?!\s*(Rate|Damage|Hit))|Specialization|Swiftness|Max HP|Additional Damage|Crit Damage|Crit Rate|Weapon Power|Back Attack|Frontal|Non-direction|Outgoing Damage|Skill cooldown|On hit,|Targets that already have|Ally))/i;
-    const repaired = [];
-    for (const g of groups) {
-      const m = g.match(INNER_BULLET_SPLIT);
-      if (m && typeof m.index === 'number' && m.index > 0) {
-        const left = g.slice(0, m.index).trim();
-        const right = g.slice(m.index).replace(/^[^A-Za-z]*\s*/, '');
-        if (left) repaired.push(left);
-        if (right) repaired.push(fixLineContent(right));
-      } else {
-        repaired.push(g);
-      }
-    }
-    groups = repaired;
-
     // loose category (UI color)
     const isCombatStat = (s) =>
-      /^(?:Crit(?!\s*(Rate|Damage|Hit))|Specialization|Swiftness)\s*\+\d+(?:\.\d+)?\b/i.test(s);
+      /^(?:Crit(?!\s*(?:Rate|Damage|Hit))|Specialization|Swiftness)\s*\+\d+(?:\.\d+)?\b/i.test(s);
     const isBasic      = (s) => /^(Intelligence|Strength|Dexterity)\s*\+\d+/i.test(s);
     const isVitality   = (s) => /^Vitality\s*\+\d+/i.test(s);
     const isMaxHpFlat  = (s) => /^Max HP\s*\+\d{4,6}$/i.test(s); // low-value
     const isSpecial    = (s) => /\bAtk\.?\/Move Speed\b/i.test(s);
     const isSupport    = (s) => /(Targets that already have|party-wide|Ally|Enhancement|target's (?:Defense|Crit Resistance|Crit Damage)\s*-[\d.]+%)/i.test(s);
-    const isDps        = (s) => /(Additional Damage|Crit Rate|Crit Damage|Crit Hit Damage|Weapon Power|Outgoing Damage|Back Attack|Frontal|Non-direction|Skill cooldown)/i.test(s);
-    const isLowValue   = (s) => /(Domination|Endurance|Expertise|Combat HP Recovery|Combat Resource|Natural Recovery|Mag\. Defense|Phy\. Defense|Challenge or lower|Paralysis|Push Immunity|Movement Skill\/Stand Up cooldown|Incoming Damage from Challenge or lower monsters)/i.test(s);
+    const isDps        = (s) => /(Additional Damage|Crit Rate|Crit Damage|Crit Hit Damage|Weapon Power|Outgoing Damage|Back Attack|Frontal|Non-direction(?:al)?|Skill cooldown)/i.test(s);
+    const isLowValue   = (s) => /(Domination|Endurance|Expertise|Combat Resource|Natural Recovery|Mag\. Defense|Phy\. Defense|Challenge or lower|Paralysis|Push Immunity|Movement Skill\/Stand Up cooldown|Incoming Damage from Challenge or lower monsters|Combat HP Recovery)/i.test(s);
 
     const tidy = (s) => s.replace(/\s+%/g, '%').replace(/\s{2,}/g, ' ').trim();
 
@@ -218,8 +202,9 @@ export const useOCR = () => {
       // decimals with space: "-4. 2%" → "-4.2%"
       s = s.replace(/(\d)\.\s*(\d+)%/g, '$1.$2%');
 
-      // durations / cooldowns
+      // durations / cooldowns / “5.” → “5s.”
       s = s.replace(/\bfor\s+Ss\b\.?/gi, 'for 5s.');
+      s = s.replace(/\bfor\s+5\b\.?/gi, 'for 5s.');
       s = s.replace(/(Cooldown:\s*)(60|70|80)\b(?!s)/gi, '$1$2s');
       s = s.replace(/(Cooldown:\s*)(60|70|80)5\b/gi, '$1$2s');
 
@@ -237,34 +222,18 @@ export const useOCR = () => {
       // Demon/Archdemon singular
       s = s.replace(/Bonus vs\. Demons\/Archdemon/gi, 'Bonus vs. Demon/Archdemon');
 
-      // ---- Challenge lines sanity + stray digits fix ----
+      // Challenge lines sanity & hallucinated "85%"
       s = s.replace(/^Damage to Challenge or lower monsters\s*-\s*(4|5|6)%\.?$/i,
                     'Damage to Challenge or lower monsters +$1%.');
       s = s.replace(/^Incoming Damage from Challenge or lower monsters\s*\+\s*(6|8|10)%\.?$/i,
                     'Incoming Damage from Challenge or lower monsters -$1%.');
-      // clamp accidental extra digit like "-85%" → "-8%"
-      s = s.replace(/^Incoming Damage from Challenge or lower monsters\s*-\s*(6|8|10)\d%\.?$/i,
-        (_m, base) => `Incoming Damage from Challenge or lower monsters -${base}%.`
-      );
+      s = s.replace(/(Incoming Damage from Challenge or lower monsters\s*-\s*)8\s*5%/i, '$18%');
 
-      // ---- Weapon Power HP≥50% variant heals ----
-      if (/When your HP is 50% or higher/i.test(s)) {
-        // fix period → comma before "upon hit"
-        s = s.replace(/(When your HP is 50% or higher)\.\s*(upon hit,)/i, '$1, $2');
-        // ensure "for 5s."
-        s = s.replace(/\bfor\s*5\b(?!s)/i, 'for 5s');
-        s = s.replace(/(for 5s)(?!\.)/i, '$1.');
-        // add comma formatting 7,200 / 2,000
-        s = s.replace(/(Weapon Power \+)(\d{4})(?=\. When your HP is 50% or higher,)/,
-          (_m, p1, num) => p1 + fmt4(num)
-        );
-        s = s.replace(/(upon hit, Weapon Power \+)(\d{4})(?=\s*for 5s)/,
-          (_m, p1, num) => p1 + fmt4(num)
-        );
-      }
-
-      // fix dot as thousands separator elsewhere (2.000 → 2,000; 1.160 → 1,160)
+      // fix dot as thousands separator (2.000 → 2,000; 1.160 → 1,160)
       s = s.replace(/\b(\d{1,3})\.(\d{3})\b/g, '$1,$2');
+
+      // “When your HP is 50% or higher. upon hit,” → add comma and case
+      s = s.replace(/When your HP is 50% or higher\.\s*upon hit,/i, 'When your HP is 50% or higher, upon hit,');
 
       // Targeted comma formatting (don’t touch flat "Weapon Power +7200/8100/9000")
       s = s.replace(/(On hit, Weapon Power \+)(\d{4})(, Atk\.\/Move Speed \+1% for 10s\. \(Max\. 6 stacks\))/,
@@ -277,19 +246,23 @@ export const useOCR = () => {
         (_m, a, mid, b, tail) => `Weapon Power +${fmt4(a)}.${mid}${fmt4(b)}${tail}`
       );
 
-      // strip stray trailing period on plain numeric statlines (include a few low-value flats)
+      // Non-direction → Non-directional
+      s = s.replace(/\bNon-direction\b(?=\s+Skill Damage)/gi, 'Non-directional');
+
+      // strip UI tails/noise that sometimes get appended to a real line
+      s = s.replace(/\s*Bonus can(?:not)? be granted\.?.*$/i, '');
+      s = s.replace(/\s*Ark Passive(?: Points)?(?: Effect)?.*$/i, '');
+      s = s.replace(/\s*Leap \+\d+\s*$/i, '');
+
+      // strip stray trailing period on plain numeric statlines
       const trailingDotPlainStat = new RegExp(
         '^(?:' +
           'Intelligence|Strength|Dexterity|Vitality|Max HP|' +
-          'Crit(?!\\s*(Rate|Damage|Hit))|Specialization|Swiftness|Domination|Endurance|Expertise|' +
-          'Combat HP Recovery' +
+          'Crit(?!\\s*(Rate|Damage|Hit))|Specialization|Swiftness|Domination|Endurance|Expertise' +
         ')\\s*\\+\\d{2,6}\\.$',
         'i'
       );
       if (trailingDotPlainStat.test(s)) s = s.replace(/\.$/, '');
-
-      // drop UI tail
-      s = s.replace(/\s*Bonus can be granted.*$/i, '');
 
       // tidy
       s = s.replace(/\s+%/g, '%').replace(/\s{2,}/g, ' ').trim();
@@ -298,7 +271,7 @@ export const useOCR = () => {
     });
   };
 
-  // ------------------ DISPLAY BEAUTIFIER ------------------
+  // ------------------ DISPLAY BEAUTIFIER (case/phrasing only) ------------------
   const beautifyDisplay = (input) => {
     let s = input;
 
@@ -320,7 +293,8 @@ export const useOCR = () => {
       [/\bweapon power\b/gi, 'Weapon Power'],
       [/\batk\.?\s*\/\s*move speed\b/gi, 'Atk./Move Speed'],
       [/\boutgoing damage\b/gi, 'Outgoing Damage'],
-      [/\bnon-direction\b/gi, 'Non-direction'],
+      [/\bnon-directional\b/gi, 'Non-directional'],
+      [/\bnon-direction\b/gi, 'Non-directional'],
       [/\bback attack\b/gi, 'Back Attack'],
       [/\bfrontal attack\b/gi, 'Frontal Attack'],
       [/\bskill cooldown\b/gi, 'Skill cooldown'],
@@ -338,14 +312,14 @@ export const useOCR = () => {
     return s;
   };
 
-  // ------------------ CANONICAL VALIDATION ------------------
+  // ------------------ CANONICAL VALIDATION (IDs added) ------------------
   const numWithCommaOpt = (vals) =>
     `(?:${vals.map(v => String(v).replace(/(\d)(?=(\d{3})+$)/g, '$1,')).join('|')}|${vals.join('|')})`;
 
   const RE = {
     BASIC_MAIN: /^(Intelligence|Strength|Dexterity)\s*\+(\d{4,5})$/i,
     BASIC_VIT: /^Vitality\s*\+(\d{4,5})$/i,
-    COMBAT: /^(Crit(?!\s*(Rate|Damage|Hit))|Specialization|Swiftness)\s*\+(\d{2,3})$/i,
+    COMBAT: /^(Crit(?!\s*(?:Rate|Damage|Hit))|Specialization|Swiftness)\s*\+(\d{2,3})\.?$/i,
 
     ATK_MOVE: /^Atk\.\/Move Speed \+(?:4|5|6)%\.?$/i,
     ADDITIONAL_DMG: /^Additional Damage \+(?:3\.00|3\.50|4\.00)%\.?$/i,
@@ -354,27 +328,26 @@ export const useOCR = () => {
     WEAPON_POWER_FLAT: new RegExp(`^Weapon Power \\+${numWithCommaOpt([7200,8100,9000])}$`, 'i'),
     BACK_ATTACK:    /^Back Attack Damage \+(?:2\.5|3(?:\.0)?|3\.5)%\.?$/i,
     FRONTAL:        /^Frontal (?:Attack|Attck) Damage \+(?:2\.5|3(?:\.0)?|3\.5)%\.?$/i,
-    NON_DIRECTION:  /^Non-direction Skill Damage \+(?:2\.5|3(?:\.0)?|3\.5)%\.? Awakening Skills do not apply\.?$/i,
+    NON_DIRECTIONAL:/^Non-direction(?:al)? Skill Damage \+(?:2\.5|3(?:\.0)?|3\.5)%\.? Awakening Skills do not apply\.?$/i,
     ON_HIT_WP_AMS:  /^On hit, Weapon Power \+(?:1,?160|1,?320|1,?480), Atk\.\/Move Speed \+1% for 10s\. \(Max\. 6 stacks\)$/i,
     OUTGOING_SOLO:  /^Outgoing Damage \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\.?$/i,
     OUTGOING_STAGG: /^Outgoing Damage \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\. Outgoing Damage \+(?:4(?:\.0)?|4\.5|5(?:\.0)?)% to Staggered foes\.?$/i,
-    ADDITIONAL_DEMONS: /^Additional Damage \+(?:2\.5|3(?:\.0)?|3\.5)%\. Bonus vs\. Demon\/Archdemon \+2\.5%\.?$/i,
-    CDMG_PAIR:  /^Crit Damage \+(?:6\.8|8\.4|10(?:\.0)?)%\. Crit Hit Damage \+1\.5%\.?$/i,
-    CRATE_PAIR: /^Crit Rate \+(?:3\.4|4\.2|5(?:\.0)?)%\. Crit Hit Damage \+1\.5%\.?$/i,
-    SKILL_COOLDOWN_OUT: /^Skill cooldown \+2%\. Outgoing Damage \+(?:4\.5|5(?:\.0)?|5\.5)%\.?$/i,
-    WP_STACKING: new RegExp(`^Weapon Power \\+${numWithCommaOpt([6900,7800,8700])}\\. Upon hit, Weapon Power \\+(?:130|140|150) for 120s every 30s\\. \\(Max\\. 30 stacks\\)$`, 'i'),
-    WP_HP50: new RegExp(`^Weapon Power \\+${numWithCommaOpt([7200,8100,9000])}\\. When your HP is 50% or higher, upon hit, Weapon Power \\+${numWithCommaOpt([2000,2200,2400])} for 5s\\.$`, 'i'),
+    ADDITIONAL_DEMONS:/^Additional Damage \+(?:2\.5|3(?:\.0)?|3\.5)%\. Bonus vs\. Demon\/Archdemon \+2\.5%\.?$/i,
+    CDMG_PAIR:      /^Crit Damage \+(?:6\.8|8\.4|10(?:\.0)?)%\. Crit Hit Damage \+1\.5%\.?$/i,
+    CRATE_PAIR:     /^Crit Rate \+(?:3\.4|4\.2|5(?:\.0)?)%\. Crit Hit Damage \+1\.5%\.?$/i,
+    SKILL_COOLDOWN_OUT:/^Skill cooldown \+2%\. Outgoing Damage \+(?:4\.5|5(?:\.0)?|5\.5)%\.?$/i,
+    WP_STACKING:    new RegExp(`^Weapon Power \\+${numWithCommaOpt([6900,7800,8700])}\\. Upon hit, Weapon Power \\+(?:130|140|150) for 120s every 30s\\. \\(Max\\. 30 stacks\\)$`, 'i'),
+    WP_HP50:        new RegExp(`^Weapon Power \\+${numWithCommaOpt([7200,8100,9000])}\\. When your HP is 50% or higher, upon hit, Weapon Power \\+${numWithCommaOpt([2000,2200,2400])} for 5s\\.$`, 'i'),
 
     ALLY_ATK_ENH_EFFECT: /^Ally Atk\. Power Enhancement Effect \+(?:4\.00|5\.00|6\.00)%$/i,
     ALLY_DMG_ENH_EFFECT: /^Ally Damage Enhancement Effect \+(?:6\.00|7\.50|9\.00)%$/i,
     ON_HIT_DEBUFF_CD: /^On hit, target's Crit Damage -(?:3\.6|4\.2|4\.8)% for 8s\. This effect is limited to a single application per party\. Ally Atk\. Power Enhancement \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\.?(?:\s*Bonus can be granted.*)?$/i,
     ON_HIT_DEBUFF_CR: /^On hit, target's Crit Resistance -(?:1\.8|2\.1|2\.5)% for 8s\. This effect is limited to a single application per party\. Ally Atk\. Power Enhancement \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\.?(?:\s*Bonus can be granted.*)?$/i,
-    ON_HIT_DEBUFF_DEF: /^On hit, target's Defense -(?:1\.8|2\.1|2\.5)% for 8s\. This effect is limited to a single application per party\. Ally Atk\. Power Enhancement \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\.?(?:\s*Bonus can be granted.*)?$/i,
-    TARGETS_PROTECTIVE: /^Targets that already have a party-wide protective effect \(Shield[ ,.]?\s*HP Regen[ ,.]?\s*Incoming Damage Reduction\) are granted Outgoing Damage \+(?:0\.9|1\.1|1\.3)% for 5s\. This effect is limited to a single application per party and does not apply to protective effects with no duration\. Ally Atk\. Power Enhancement \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\.?(?:\s*Bonus can be granted.*)?$/i,
+    ON_HIT_DEBUFF_DEF:/^On hit, target's Defense -(?:1\.8|2\.1|2\.5)% for 8s\. This effect is limited to a single application per party\. Ally Atk\. Power Enhancement \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\.?(?:\s*Bonus can be granted.*)?$/i,
+    TARGETS_PROTECTIVE:/^Targets that already have a party-wide protective effect \(Shield[ ,.]?\s*HP Regen[ ,.]?\s*Incoming Damage Reduction\) are granted Outgoing Damage \+(?:0\.9|1\.1|1\.3)% for 5s\. This effect is limited to a single application per party and does not apply to protective effects with no duration\. Ally Atk\. Power Enhancement \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\.?(?:\s*Bonus can be granted.*)?$/i,
 
-    // low-value pool
     LV_COMBAT: /^(Domination|Endurance|Expertise)\s*\+(\d{2,3})$/i,
-    LV_HP_REC: /^Combat HP Recovery \+(?:100|130|160)\.?$/i, // allow optional trailing period
+    LV_HP_REC: /^Combat HP Recovery \+(?:100|130|160)$/i,
     LV_RESOURCE: /^Combat Resource Natural Recovery \+(?:8\.00|10\.00|12\.00)%$/i,
     LV_DEF_MAG: /^Mag\. Defense \+(?:5000|6000|7000)$/i,
     LV_DEF_PHY: /^Phy\. Defense \+(?:5000|6000|7000)$/i,
@@ -412,7 +385,7 @@ export const useOCR = () => {
     m = L.match(RE.COMBAT);
     if (m) {
       const name = cap(m[1]);
-      const val = parseInt(m[3], 10);
+      const val = parseInt(m[2], 10);
       if (val >= 61 && val <= 120)
         return { ok: true, category: 'combat', id: `combat:${name}` };
       return { ok: false, why: `Combat stat out of range (61–120): ${val}` };
@@ -425,7 +398,7 @@ export const useOCR = () => {
     if (RE.WEAPON_POWER_FLAT.test(L)) return { ok: true, category: 'dps', id: 'dps:weapon_power_flat' };
     if (RE.BACK_ATTACK.test(L))     return { ok: true, category: 'dps', id: 'dps:back_attack' };
     if (RE.FRONTAL.test(L))         return { ok: true, category: 'dps', id: 'dps:frontal_attack' };
-    if (RE.NON_DIRECTION.test(L))   return { ok: true, category: 'dps', id: 'dps:non_direction' };
+    if (RE.NON_DIRECTIONAL.test(L)) return { ok: true, category: 'dps', id: 'dps:non_direction' };
     if (RE.ON_HIT_WP_AMS.test(L))   return { ok: true, category: 'dps', id: 'dps:onhit_wp_ams' };
     if (RE.OUTGOING_SOLO.test(L))   return { ok: true, category: 'dps', id: 'dps:outgoing_damage' };
     if (RE.OUTGOING_STAGG.test(L))  return { ok: true, category: 'dps', id: 'dps:outgoing_damage_staggered' };
