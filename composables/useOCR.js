@@ -1,8 +1,9 @@
+// composables/useOCR.js
 export const useOCR = () => {
   const processImage = async (imageFile) => {
     try {
       const { default: Tesseract } = await import('tesseract.js');
-      
+
       const { data: { text } } = await Tesseract.recognize(
         imageFile,
         'eng',
@@ -20,7 +21,6 @@ export const useOCR = () => {
       const unknowns = healed.filter(s => s.category === 'unknown');
       const strict = healed.map(s => {
         const check = validateCanonical(s.raw);
-        // attach display-only beautified text (does NOT affect validation)
         const display = beautifyDisplay(s.raw);
         return {
           ...s,
@@ -63,13 +63,13 @@ export const useOCR = () => {
       .replace(/\+\s+(\d+)/g, '+$1')                 // "+ 13121" → "+13121"
       .replace(/\+(\d+)\s+(\d{1,2})%/g, '+$1.$2%')   // "+8 40%" → "+8.40%"
       .replace(/([A-Za-z])([+\-]\d)/g, '$1 $2')      // "Crit+79" → "Crit +79"
-      .replace(/(\d),(\d{3})(?=[^\d]|$)/g, '$1$2');  // 7,200 → 7200 (we’ll reformat where needed)
+      .replace(/(\d),(\d{3})(?=[^\d]|$)/g, '$1$2');  // 7,200 → 7200 (we’ll reformat later)
 
     const rawLines = norm.split('\n').map(l => l.trim()).filter(Boolean);
 
     const leadingJunk = `['"\`‘’“”\\s]*`;
-    // bullets: @ © ® o O 8 a A
-    const bulletCore = `(?:[@©®oOaA]|8(?=\\s+[A-Za-z]))`;
+    // bullets: @ © ® o O a A and digit bullets 8/9 (OCR look-alikes)
+    const bulletCore = `(?:[@©®oOaA]|[89](?=\\s+[A-Za-z]))`;
     const bulletRE = new RegExp(`^${leadingJunk}${bulletCore}(?![A-Za-z0-9])\\s?`);
     const stripLeadingJunkAndBulletRE = new RegExp(`^${leadingJunk}${bulletCore}(?![A-Za-z0-9])\\s?`);
     const stripLeadingJunkOnlyRE = /^[\s"'`‘’“”]+/;
@@ -119,7 +119,7 @@ export const useOCR = () => {
       return t;
     };
 
-    const groups = [];
+    let groups = [];
     let current = '';
     let started = false;
 
@@ -150,6 +150,22 @@ export const useOCR = () => {
     }
     if (current) groups.push(current.trim());
 
+    // split if a stray bullet sneaks *inside* a grouped line (e.g. "... % 9 Crit +114")
+    const INNER_BULLET_SPLIT = /(?:[@©®oOaA]|[89])\s+(?=(Intelligence|Strength|Dexterity|Vitality|Crit(?!\s*(Rate|Damage|Hit))|Specialization|Swiftness|Max HP|Additional Damage|Crit Damage|Crit Rate|Weapon Power|Back Attack|Frontal|Non-direction|Outgoing Damage|Skill cooldown|On hit,|Targets that already have|Ally))/i;
+    const repaired = [];
+    for (const g of groups) {
+      const m = g.match(INNER_BULLET_SPLIT);
+      if (m && typeof m.index === 'number' && m.index > 0) {
+        const left = g.slice(0, m.index).trim();
+        const right = g.slice(m.index).replace(/^[^A-Za-z]*\s*/, '');
+        if (left) repaired.push(left);
+        if (right) repaired.push(fixLineContent(right));
+      } else {
+        repaired.push(g);
+      }
+    }
+    groups = repaired;
+
     // loose category (UI color)
     const isCombatStat = (s) =>
       /^(?:Crit(?!\s*(Rate|Damage|Hit))|Specialization|Swiftness)\s*\+\d+(?:\.\d+)?\b/i.test(s);
@@ -159,7 +175,7 @@ export const useOCR = () => {
     const isSpecial    = (s) => /\bAtk\.?\/Move Speed\b/i.test(s);
     const isSupport    = (s) => /(Targets that already have|party-wide|Ally|Enhancement|target's (?:Defense|Crit Resistance|Crit Damage)\s*-[\d.]+%)/i.test(s);
     const isDps        = (s) => /(Additional Damage|Crit Rate|Crit Damage|Crit Hit Damage|Weapon Power|Outgoing Damage|Back Attack|Frontal|Non-direction|Skill cooldown)/i.test(s);
-    const isLowValue   = (s) => /(Domination|Endurance|Expertise|Combat Resource|Natural Recovery|Mag\. Defense|Phy\. Defense|Challenge or lower|Paralysis|Push Immunity|Movement Skill\/Stand Up cooldown|Incoming Damage from Challenge or lower monsters)/i.test(s);
+    const isLowValue   = (s) => /(Domination|Endurance|Expertise|Combat HP Recovery|Combat Resource|Natural Recovery|Mag\. Defense|Phy\. Defense|Challenge or lower|Paralysis|Push Immunity|Movement Skill\/Stand Up cooldown|Incoming Damage from Challenge or lower monsters)/i.test(s);
 
     const tidy = (s) => s.replace(/\s+%/g, '%').replace(/\s{2,}/g, ' ').trim();
 
@@ -221,13 +237,33 @@ export const useOCR = () => {
       // Demon/Archdemon singular
       s = s.replace(/Bonus vs\. Demons\/Archdemon/gi, 'Bonus vs. Demon/Archdemon');
 
-      // Challenge lines sanity
+      // ---- Challenge lines sanity + stray digits fix ----
       s = s.replace(/^Damage to Challenge or lower monsters\s*-\s*(4|5|6)%\.?$/i,
                     'Damage to Challenge or lower monsters +$1%.');
       s = s.replace(/^Incoming Damage from Challenge or lower monsters\s*\+\s*(6|8|10)%\.?$/i,
                     'Incoming Damage from Challenge or lower monsters -$1%.');
+      // clamp accidental extra digit like "-85%" → "-8%"
+      s = s.replace(/^Incoming Damage from Challenge or lower monsters\s*-\s*(6|8|10)\d%\.?$/i,
+        (_m, base) => `Incoming Damage from Challenge or lower monsters -${base}%.`
+      );
 
-      // fix dot as thousands separator (2.000 → 2,000; 1.160 → 1,160)
+      // ---- Weapon Power HP≥50% variant heals ----
+      if (/When your HP is 50% or higher/i.test(s)) {
+        // fix period → comma before "upon hit"
+        s = s.replace(/(When your HP is 50% or higher)\.\s*(upon hit,)/i, '$1, $2');
+        // ensure "for 5s."
+        s = s.replace(/\bfor\s*5\b(?!s)/i, 'for 5s');
+        s = s.replace(/(for 5s)(?!\.)/i, '$1.');
+        // add comma formatting 7,200 / 2,000
+        s = s.replace(/(Weapon Power \+)(\d{4})(?=\. When your HP is 50% or higher,)/,
+          (_m, p1, num) => p1 + fmt4(num)
+        );
+        s = s.replace(/(upon hit, Weapon Power \+)(\d{4})(?=\s*for 5s)/,
+          (_m, p1, num) => p1 + fmt4(num)
+        );
+      }
+
+      // fix dot as thousands separator elsewhere (2.000 → 2,000; 1.160 → 1,160)
       s = s.replace(/\b(\d{1,3})\.(\d{3})\b/g, '$1,$2');
 
       // Targeted comma formatting (don’t touch flat "Weapon Power +7200/8100/9000")
@@ -241,11 +277,12 @@ export const useOCR = () => {
         (_m, a, mid, b, tail) => `Weapon Power +${fmt4(a)}.${mid}${fmt4(b)}${tail}`
       );
 
-      // strip stray trailing period on plain numeric statlines
+      // strip stray trailing period on plain numeric statlines (include a few low-value flats)
       const trailingDotPlainStat = new RegExp(
         '^(?:' +
           'Intelligence|Strength|Dexterity|Vitality|Max HP|' +
-          'Crit(?!\\s*(Rate|Damage|Hit))|Specialization|Swiftness|Domination|Endurance|Expertise' +
+          'Crit(?!\\s*(Rate|Damage|Hit))|Specialization|Swiftness|Domination|Endurance|Expertise|' +
+          'Combat HP Recovery' +
         ')\\s*\\+\\d{2,6}\\.$',
         'i'
       );
@@ -335,8 +372,9 @@ export const useOCR = () => {
     ON_HIT_DEBUFF_DEF: /^On hit, target's Defense -(?:1\.8|2\.1|2\.5)% for 8s\. This effect is limited to a single application per party\. Ally Atk\. Power Enhancement \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\.?(?:\s*Bonus can be granted.*)?$/i,
     TARGETS_PROTECTIVE: /^Targets that already have a party-wide protective effect \(Shield[ ,.]?\s*HP Regen[ ,.]?\s*Incoming Damage Reduction\) are granted Outgoing Damage \+(?:0\.9|1\.1|1\.3)% for 5s\. This effect is limited to a single application per party and does not apply to protective effects with no duration\. Ally Atk\. Power Enhancement \+(?:2(?:\.0)?|2\.5|3(?:\.0)?)%\.?(?:\s*Bonus can be granted.*)?$/i,
 
+    // low-value pool
     LV_COMBAT: /^(Domination|Endurance|Expertise)\s*\+(\d{2,3})$/i,
-    LV_HP_REC: /^Combat HP Recovery \+(?:100|130|160)$/i,
+    LV_HP_REC: /^Combat HP Recovery \+(?:100|130|160)\.?$/i, // allow optional trailing period
     LV_RESOURCE: /^Combat Resource Natural Recovery \+(?:8\.00|10\.00|12\.00)%$/i,
     LV_DEF_MAG: /^Mag\. Defense \+(?:5000|6000|7000)$/i,
     LV_DEF_PHY: /^Phy\. Defense \+(?:5000|6000|7000)$/i,
