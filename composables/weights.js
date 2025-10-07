@@ -2,7 +2,6 @@
 
 const near = (x, y, tol = 0.05) => Math.abs(x - y) <= tol;
 
-// parse numbers from text (robust to commas)
 const extractPercents = (text) =>
   Array.from(text.matchAll(/([+-]?\d+(?:\.\d+)?)%/g)).map(m => parseFloat(m[1]));
 
@@ -60,7 +59,6 @@ const DPS_POINTS = {
   MAIN_10000: 3
 };
 
-// score functions per DPS id
 const dpsScorers = {
   'dps:additional_damage_demon': ({ percents }) => {
     const p = percents?.[0] ?? 0;
@@ -160,9 +158,9 @@ const dpsScorers = {
     return v / 160;
   },
 
-  'dps:back_attack':     ({ percents }) => { const p = percents?.[0] ?? 0; if (near(p,3.5)) return DPS_POINTS.BACK_3_5; if (near(p,3.0)) return DPS_POINTS.BACK_3_0; if (near(p,2.5)) return DPS_POINTS.BACK_2_5; return p*7; },
-  'dps:frontal_attack':  ({ percents }) => { const p = percents?.[0] ?? 0; if (near(p,3.5)) return DPS_POINTS.FRONT_3_5; if (near(p,3.0)) return DPS_POINTS.FRONT_3_0; if (near(p,2.5)) return DPS_POINTS.FRONT_2_5; return p*7; },
-  'dps:non_direction':   ({ percents }) => { const p = percents?.[0] ?? 0; if (near(p,3.5)) return DPS_POINTS.NONDIR_3_5; if (near(p,3.0)) return DPS_POINTS.NONDIR_3_0; if (near(p,2.5)) return DPS_POINTS.NONDIR_2_5; return p*7; },
+  'dps:back_attack':    ({ percents }) => { const p = percents?.[0] ?? 0; if (near(p,3.5)) return DPS_POINTS.BACK_3_5; if (near(p,3.0)) return DPS_POINTS.BACK_3_0; if (near(p,2.5)) return DPS_POINTS.BACK_2_5; return p*7; },
+  'dps:frontal_attack': ({ percents }) => { const p = percents?.[0] ?? 0; if (near(p,3.5)) return DPS_POINTS.FRONT_3_5; if (near(p,3.0)) return DPS_POINTS.FRONT_3_0; if (near(p,2.5)) return DPS_POINTS.FRONT_2_5; return p*7; },
+  'dps:non_direction':  ({ percents }) => { const p = percents?.[0] ?? 0; if (near(p,3.5)) return DPS_POINTS.NONDIR_3_5; if (near(p,3.0)) return DPS_POINTS.NONDIR_3_0; if (near(p,2.5)) return DPS_POINTS.NONDIR_2_5; return p*7; },
 
   'special:atk_move_speed': ({ percents }) => {
     const p = percents?.[0] ?? 0;
@@ -179,7 +177,7 @@ const dpsScorers = {
     if (v >= 9600)  return DPS_POINTS.MAIN_10000;
     return 0;
   },
-  'basic:main:Strength': ({ amounts }) => dpsScorers['basic:main:Intelligence']({ amounts }),
+  'basic:main:Strength':  ({ amounts }) => dpsScorers['basic:main:Intelligence']({ amounts }),
   'basic:main:Dexterity': ({ amounts }) => dpsScorers['basic:main:Intelligence']({ amounts }),
 
   'dps:additional_damage': ({ percents }) => {
@@ -197,57 +195,47 @@ const SUP_POINTS = {
   CD_DEBUFF_LOW:  110,
   CD_DEBUFF_MID:  115,
   CD_DEBUFF_HIGH: 120,
-
   CR_DEBUFF_LOW:  104,
   CR_DEBUFF_MID:  109,
   CR_DEBUFF_HIGH: 114,
-
   DEF_DEBUFF_LOW: 100,
   DEF_DEBUFF_MID: 105,
   DEF_DEBUFF_HIGH:110,
-
   CHEERS_LOW:   96,
   CHEERS_MID:   101,
   CHEERS_HIGH:  106,
-
   ALLY_DMG_6:   80,
   ALLY_DMG_7_5: 86,
   ALLY_DMG_9:   92,
-
   ALLY_ATK_4:   60,
   ALLY_ATK_5:   66,
   ALLY_ATK_6:   72,
-
   WP_ANY_SMALL:  25,
   MAIN_SMALL:    12
 };
 
 const supportScorers = {
-  // Debuff: Crit Damage 
   'support:debuff_crit_damage': ({ percents }) => {
-    const mag = Math.abs(percents?.[0] ?? 0); 
+    const mag = Math.abs(percents?.[0] ?? 0);
     if (near(mag, 4.8)) return SUP_POINTS.CD_DEBUFF_HIGH;
     if (near(mag, 4.2)) return SUP_POINTS.CD_DEBUFF_MID;
     if (near(mag, 3.6)) return SUP_POINTS.CD_DEBUFF_LOW;
     return mag * 20;
   },
-  // Debuff: Crit Resistance 
   'support:debuff_crit_resist': ({ percents }) => {
-    const mag = Math.abs(percents?.[0] ?? 0); 
+    const mag = Math.abs(percents?.[0] ?? 0);
     if (near(mag, 2.5)) return SUP_POINTS.CR_DEBUFF_HIGH;
     if (near(mag, 2.1)) return SUP_POINTS.CR_DEBUFF_MID;
     if (near(mag, 1.8)) return SUP_POINTS.CR_DEBUFF_LOW;
     return mag * 25;
   },
-  // Debuff: Defense 
   'support:debuff_defense': ({ percents }) => {
-    const mag = Math.abs(percents?.[0] ?? 0); 
+    const mag = Math.abs(percents?.[0] ?? 0);
     if (near(mag, 2.5)) return SUP_POINTS.DEF_DEBUFF_HIGH;
     if (near(mag, 2.1)) return SUP_POINTS.DEF_DEBUFF_MID;
     if (near(mag, 1.8)) return SUP_POINTS.DEF_DEBUFF_LOW;
     return mag * 24;
   },
-  // "Cheers" (Outgoing + Ally Atk)
   'support:targets_protective': ({ percents }) => {
     const out = Math.abs(percents?.[0] ?? 0);
     if (near(out, 1.3)) return SUP_POINTS.CHEERS_HIGH;
@@ -255,7 +243,6 @@ const supportScorers = {
     if (near(out, 0.9)) return SUP_POINTS.CHEERS_LOW;
     return out * 70;
   },
-
   'support:ally_dmg_enh_effect': ({ percents }) => {
     const v = Math.abs(percents?.[0] ?? 0);
     if (near(v, 9.0))  return SUP_POINTS.ALLY_DMG_9;
@@ -263,7 +250,6 @@ const supportScorers = {
     if (near(v, 6.0))  return SUP_POINTS.ALLY_DMG_6;
     return v * 8.5;
   },
-
   'support:ally_atk_enh_effect': ({ percents }) => {
     const v = Math.abs(percents?.[0] ?? 0);
     if (near(v, 6.0)) return SUP_POINTS.ALLY_ATK_6;
@@ -272,7 +258,6 @@ const supportScorers = {
     return v * 6;
   },
 
-  // Tiny bonuses for WP and main stat in support context
   'dps:weapon_power_flat':     () => SUP_POINTS.WP_ANY_SMALL,
   'dps:weapon_power_stacking': () => SUP_POINTS.WP_ANY_SMALL,
   'dps:onhit_wp_ams':          () => SUP_POINTS.WP_ANY_SMALL,
@@ -282,8 +267,6 @@ const supportScorers = {
   'basic:main:Strength':       () => SUP_POINTS.MAIN_SMALL,
   'basic:main:Dexterity':      () => SUP_POINTS.MAIN_SMALL
 };
-
-//// Public API ////////////////////////////////////////////////////////////
 
 export const defaultWeights = {};
 
@@ -300,18 +283,38 @@ export const getProfileWeights = (role = 'DPS') => {
 };
 
 export const scoreStat = (stat, weights) => {
-  const id = stat.id || '';
-  const line = stat.raw || stat.display || '';
-  const vals = {
-    percents: extractPercents(line),
-    amounts:  extractPlusNumbers(line),
-    text:     line
-  };
+  const id   = stat.id || '';
+  const line = (stat.raw || stat.display || '').trim();
+
+  const percents = extractPercents(line);
+  const amounts  = extractPlusNumbers(line);
+
+  const isSupportProfile = !!Object.keys(weights || {}).find(k => k.startsWith('support:'));
+
+  let fallbackMain = 0;
+  const mMain = line.match(/^\s*(Intelligence|Strength|Dexterity)\s*\+(\d{1,3}(?:,\d{3})+|\d{4,6})\s*\.?\s*$/i);
+  if (mMain) {
+    const v = parseInt(mMain[2].replace(/,/g, ''), 10);
+    if (isSupportProfile) {
+      fallbackMain = 12;
+    } else {
+      if (v >= 15800) fallbackMain = 9;
+      else if (v >= 12800) fallbackMain = 6;
+      else if (v >= 9600)  fallbackMain = 3;
+    }
+  }
+
+  let byId = 0;
   const w = weights?.[id];
   if (w && typeof w.score === 'function') {
-    try { return Number(w.score(vals, stat)) || 0; } catch { return 0; }
+    try {
+      byId = Number(w.score({ percents, amounts, text: line }, stat)) || 0;
+    } catch {
+      byId = 0;
+    }
   }
-  return 0;
+
+  return Math.max(byId, fallbackMain);
 };
 
 export const scoreBracelet = (stats, weights) =>
