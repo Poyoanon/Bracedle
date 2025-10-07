@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="text-center mb-8">
         <h1 class="text-4xl font-bold text-white mb-2">
-          Bracedle
+          Bracedle (Beta)
         </h1>
         <h2 class="text-1xl font-bold text-white mb-2">
           Lost Ark Bracelet Comparator
