@@ -1,4 +1,3 @@
-// composables/useOCR.js
 export const useOCR = () => {
   const processImage = async (imageFile) => {
     try {
@@ -55,8 +54,8 @@ export const useOCR = () => {
     let norm = text
       .normalize('NFKC')
       .replace(/\r/g, '\n')
-      .replace(/[“”]/g, '"')
-      .replace(/[’]/g, "'")
+      .replace(/[""]/g, '"')
+      .replace(/[']/g, "'")
       .replace(/\+\s+(\d+)/g, '+$1')
       .replace(/\+(\d+)\s+(\d{1,2})%/g, '+$1.$2%')
       .replace(/([A-Za-z])([+\-]\d)/g, '$1 $2')
@@ -64,11 +63,11 @@ export const useOCR = () => {
 
     const rawLines = norm.split('\n').map(l => l.trim()).filter(Boolean);
 
-    const leadingJunk = `['"\`‘’“”\\s]*`;
+    const leadingJunk = `['"\`''""\\s]*`;
     const bulletCore = `(?:[@©®oOaA](?=[A-Z]|\\s+[A-Z])|8(?=\\s+[A-Z])|9(?=\\s+[A-Z]))`;
     const bulletRE = new RegExp(`^${leadingJunk}${bulletCore}`);
     const stripLeadingJunkAndBulletRE = new RegExp(`^${leadingJunk}${bulletCore}\\s*`);
-    const stripLeadingJunkOnlyRE = /^[\s"'`‘’“”]+/;
+    const stripLeadingJunkOnlyRE = /^[\s"'`''""]+/;
 
     const headerNoiseRE = /(Item Tier|tem Tier|Restricted Trading|Bound to Character|Untradable|Ancient|Radiant|Bracelet Bonus)/i;
 
@@ -83,6 +82,11 @@ export const useOCR = () => {
 
     const fixLineContent = (s) => {
       let t = s;
+
+      t = t.replace(/\bMaxHP\b/gi, 'Max HP');
+      t = t.replace(/^(Damage to Challenge or lower monsters)\s*(\d+)%/i, '$1 +$2%');
+      t = t.replace(/^(Incoming Damage from Challenge or lower monsters)\s+(\d+)%/i, '$1 -$2%');
+      t = t.replace(/^(Movement Skill\/Stand Up cooldown)\s+(\d+)%/i, '$1 -$2%');
 
       t = t.replace(
         /^(Crit(?!\s*(Rate|Damage|Hit))|Specialization|Swiftness|Domination|Endurance|Expertise)\s+(\d{2,3})\b/i,
@@ -174,9 +178,9 @@ export const useOCR = () => {
     return parsed.map(({ raw, category }) => {
       let s = raw;
 
-      s = s.replace(/^['"“”‘’]+(?=\S)/, '');
-      s = s.replace(/(?<=\S)['"“”‘’]+$/, '');
-      s = s.replace(/(\.\s*)['"“”‘’]+(?=\S)/g, '$1');
+      s = s.replace(/^['"""'']+(?=\S)/, '');
+      s = s.replace(/(?<=\S)['"""'']+$/, '');
+      s = s.replace(/(\.\s*)['"""'']+(?=\S)/g, '$1');
 
       s = s.replace(/[–−]/g, '-');
 
@@ -203,28 +207,22 @@ export const useOCR = () => {
 
       s = s.replace(/Bonus vs\. Demons\/Archdemon/gi, 'Bonus vs. Demon/Archdemon');
 
-      s = s.replace(/^Damage to Challenge or lower monsters\s*-\s*(4|5|6)%\.?$/i,
-                    'Damage to Challenge or lower monsters +$1%.');
+      s = s.replace(/^(Damage to Challenge or lower monsters)\s+(\d+)%/i, '$1 +$2%');
+
       s = s.replace(/^Incoming Damage from Challenge or lower monsters\s*\+\s*(6|8|10)%\.?$/i,
                     'Incoming Damage from Challenge or lower monsters -$1%.');
       s = s.replace(/(Incoming Damage from Challenge or lower monsters\s*-\s*)8\s*5%/i, '$18%');
 
-      // Convert dot thousands to comma (7.200 -> 7,200)
       s = s.replace(/\b(\d{1,3})\.(\d{3})\b/g, '$1,$2');
 
-      // Normalize the HP≥50% sentence punctuation
       s = s.replace(/When your HP is 50% or higher\s*[.,]?\s*upon hit,/i, 'When your HP is 50% or higher, upon hit,');
 
-      // Force 4-digit Weapon Power numbers to have a comma (works for both flat and HP50 lines)
       s = s.replace(/(Weapon Power \+)(\d{4})(?=[^\d]|$)/g, (_m, p1, num) => p1 + fmt4(num));
 
-      // Ensure final chunk uses 5s
       s = s.replace(/\bfor\s+5\b(?!s)/gi, 'for 5s');
 
-      // Non-directional wording
       s = s.replace(/\bNon-direction\b(?=\s+Skill Damage)/gi, 'Non-directional');
 
-      // Fix stray spaces in "Movement Skill/Stand Up cooldown - 8%" → "-8%"
       s = s.replace(/(Movement Skill\/Stand Up cooldown\s*-\s+)(\d+)%/i, (_m, _p, n) => `Movement Skill/Stand Up cooldown -${n}%`);
 
       const trailingDotPlainStat = new RegExp(
@@ -236,7 +234,6 @@ export const useOCR = () => {
       );
       if (trailingDotPlainStat.test(s)) s = s.replace(/\.$/, '');
 
-      // Drop bracelet-UI junk lines that occasionally get glued on
       s = s.replace(/\s*Bonus cannot be granted\.\s*Ark Passive Points Effect.*$/i, '');
 
       s = s.replace(/\s+%/g, '%').replace(/\s{2,}/g, ' ').trim();
@@ -298,13 +295,11 @@ export const useOCR = () => {
     CRIT_DMG:       /^Crit Damage \+(?:6\.80|8\.40|10\.00|6\.8|8\.4|10)%\.?$/i,
     CRIT_RATE:      /^Crit Rate \+(?:3\.40|4\.20|5\.00|3\.4|4\.2|5)%\.?$/i,
 
-    // Flat WP — allow trailing dot
     WEAPON_POWER_FLAT: new RegExp(`^Weapon Power \\+${numWithCommaOpt([7200,8100,9000])}\\.?$`, 'i'),
 
     BACK_ATTACK:    /^Back Attack Damage \+(?:2\.5|3(?:\.0)?|3\.5)%\.?$/i,
     FRONTAL:        /^Frontal (?:Attack|Attck) Damage \+(?:2\.5|3(?:\.0)?|3\.5)%\.?$/i,
 
-    // Accept "Non-directional" (preferred) or "Non-direction"
     NON_DIRECTIONAL: /^Non-direction(?:al)? Skill Damage \+(?:2\.5|3(?:\.0)?|3\.5)%\.? Awakening Skills do not apply\.?$/i,
 
     ON_HIT_WP_AMS:  /^On hit, Weapon Power \+(?:1,?160|1,?320|1,?480), Atk\.\/Move Speed \+1% for 10s\. \(Max\. 6 stacks\)$/i,
@@ -317,7 +312,6 @@ export const useOCR = () => {
 
     WP_STACKING: new RegExp(`^Weapon Power \\+${numWithCommaOpt([6900,7800,8700])}\\. Upon hit, Weapon Power \\+(?:130|140|150) for 120s every 30s\\. \\(Max\\. 30 stacks\\)$`, 'i'),
 
-    // HP≥50% line — accepts comma or no-comma for both numbers (post-heal also inserts comma anyway)
     WP_HP50: new RegExp(
       `^Weapon Power \\+${numWithCommaOpt([7200,8100,9000])}\\. ` +
       `When your HP is 50% or higher, upon hit, ` +
@@ -338,9 +332,9 @@ export const useOCR = () => {
     LV_DEF_MAG: /^Mag\. Defense \+(?:5000|6000|7000)$/i,
     LV_DEF_PHY: /^Phy\. Defense \+(?:5000|6000|7000)$/i,
     LV_CHALLENGE_DMG: /^Damage to Challenge or lower monsters \+(?:4|5|6)%\.?$/i,
-    LV_CHALLENGE_IN: /^Incoming Damage from Challenge or lower monsters \-(?:6|8|10)%\.?$/i,
+    LV_CHALLENGE_IN: /^Incoming Damage from Challenge or lower monsters -(?:6|8|10)%\.?$/i,
     LV_IMMUNITY: /^On hit, Paralysis and Push Immunity for (?:80|70|60)s\. \(Cooldown: (?:80|70|60)s\) The effect is removed upon getting hit 1 time\.$/i,
-    LV_MOVE_CD: /^Movement Skill\/Stand Up cooldown \-(?:8|10|12)%\.?$/i,
+    LV_MOVE_CD: /^Movement Skill\/Stand Up cooldown -(?:8|10|12)%\.?$/i,
     LV_MAX_HP_FLAT: new RegExp(`^Max HP \\+${numWithCommaOpt([11200,14000,16800])}$`, 'i')
   };
 
@@ -371,7 +365,7 @@ export const useOCR = () => {
     m = L.match(RE.COMBAT);
     if (m) {
       const name = cap(m[1]);
-      const val = parseInt(m[3], 10);  
+      const val = parseInt(m[3], 10);
       if (val >= 61 && val <= 120)
         return { ok: true, category: 'combat', id: `combat:${name}` };
       return { ok: false, why: `Combat stat out of range (61–120): ${val}` };
@@ -409,6 +403,7 @@ export const useOCR = () => {
       if (val >= 61 && val <= 120) return { ok: true, category: 'low-value', id: `low:${name}` };
       return { ok: false, why: `Low-value combat stat out of range (61–120): ${val}` };
     }
+
     if (RE.LV_HP_REC.test(L))       return { ok: true, category: 'low-value', id: 'low:combat_hp_recovery' };
     if (RE.LV_RESOURCE.test(L))     return { ok: true, category: 'low-value', id: 'low:combat_resource_recovery' };
     if (RE.LV_DEF_MAG.test(L))      return { ok: true, category: 'low-value', id: 'low:mag_defense' };
