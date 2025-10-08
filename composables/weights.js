@@ -158,6 +158,7 @@ const dpsScorers = {
     return v / 160;
   },
 
+
   'dps:back_attack':    ({ percents }) => { const p = percents?.[0] ?? 0; if (near(p,3.5)) return DPS_POINTS.BACK_3_5; if (near(p,3.0)) return DPS_POINTS.BACK_3_0; if (near(p,2.5)) return DPS_POINTS.BACK_2_5; return p*7; },
   'dps:frontal_attack': ({ percents }) => { const p = percents?.[0] ?? 0; if (near(p,3.5)) return DPS_POINTS.FRONT_3_5; if (near(p,3.0)) return DPS_POINTS.FRONT_3_0; if (near(p,2.5)) return DPS_POINTS.FRONT_2_5; return p*7; },
   'dps:non_direction':  ({ percents }) => { const p = percents?.[0] ?? 0; if (near(p,3.5)) return DPS_POINTS.NONDIR_3_5; if (near(p,3.0)) return DPS_POINTS.NONDIR_3_0; if (near(p,2.5)) return DPS_POINTS.NONDIR_2_5; return p*7; },
