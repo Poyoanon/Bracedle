@@ -3,7 +3,7 @@
     <div class="max-w-7xl mx-auto pb-24">
       <div class="text-center mb-8">
         <h1 class="text-4xl font-bold text-white mb-2">Bracedle (Beta)</h1>
-        <h2 class="text-1xl font-bold text-white mb-2">Lost Ark Bracelet Comparator</h2>
+        <h2 class="text-1xl font-bold text-white mb-2">Lost Ark Bracelet Comparison Tool</h2>
         <p class="text-gray-400">Upload bracelet screenshots to be told left or right better</p>
       </div>
 
